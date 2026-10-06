@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { listProducts, createProduct, ValidationError } from "@/lib/queries";
+import { getSessionFromRequest } from "@/lib/auth";
 import type { Category } from "@/lib/types";
 
 export async function GET(request: Request): Promise<Response> {
@@ -12,11 +13,17 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let body: Record<string, unknown>;
+  if ((await getSessionFromRequest(request)) === null) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  let body: Record<string, unknown> | null;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Body harus JSON" }, { status: 400 });
+  }
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Body harus object JSON" }, { status: 400 });
   }
   try {
     const db = await getDb();

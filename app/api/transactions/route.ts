@@ -7,6 +7,7 @@ import {
   ProductNotFoundError,
   InsufficientStockError,
 } from "@/lib/queries";
+import { getSessionFromRequest } from "@/lib/auth";
 import type { NewTransactionItem } from "@/lib/queries";
 
 export async function GET(request: Request): Promise<Response> {
@@ -17,11 +18,17 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let body: { items?: unknown };
+  if ((await getSessionFromRequest(request)) === null) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  let body: { items?: unknown } | null;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Body harus JSON" }, { status: 400 });
+  }
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Body harus object JSON" }, { status: 400 });
   }
 
   const items = body.items;

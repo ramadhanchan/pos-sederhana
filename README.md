@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Toko Sederhana — POS Sederhana
 
-## Getting Started
+Website Point of Sale (POS) sederhana: kasir dengan keranjang, checkout + struk,
+kelola produk, riwayat transaksi, dan laporan penjualan harian.
+Dibangun untuk belajar dan portfolio — dijalankan sepenuhnya lokal, tanpa deployment.
 
-First, run the development server:
+## Tech Stack
+
+- **Runtime:** Bun (package manager, `bun:sqlite`, `bun test`)
+- **Framework:** Next.js 16 (App Router) + TypeScript
+- **Styling:** Tailwind CSS
+- **Server state:** TanStack Query
+- **Database:** SQLite (file `pos.db`, dibuat otomatis)
+
+## Menjalankan
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install        # install dependensi
+bun run dev        # dev server → http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> Penting: semua script dev/build/start memakai `bun --bun next ...` —
+> `bun:sqlite` hanya hidup di runtime Bun, jangan diganti dengan Node/npm.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Login
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Username | Password   |
+| -------- | ---------- |
+| `admin`  | `admin123` |
 
-## Learn More
+Akun dan 10 produk dummy di-seed otomatis saat `pos.db` belum ada.
 
-To learn more about Next.js, take a look at the following resources:
+## Fitur
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Kasir** (`/`) — cari produk (`/` untuk fokus search, `Enter` menambah hasil
+  pertama), filter kategori, keranjang, checkout atomik (stok tidak pernah minus),
+  struk siap cetak
+- **Produk** (`/produk`) — tambah/edit/hapus produk, badge stok
+- **Riwayat** (`/riwayat`) — daftar transaksi + detail item (snapshot nama/harga)
+- **Laporan** (`/laporan`) — total penjualan, jumlah transaksi, produk terlaris
+  per tanggal
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Testing
 
-## Deploy on Vercel
+```bash
+bun test           # 41 test: queries, auth, API routes
+bun run typecheck  # tsc --noEmit
+bun run build      # production build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Arsitektur
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Satu aplikasi Next.js: halaman React sebagai frontend, API routes sebagai
+backend, SQLite via `bun:sqlite` sebagai database.
+
+- `lib/db.ts` — koneksi, schema, seed
+- `lib/queries.ts` — semua SQL
+- `lib/auth.ts` — bcrypt + signed session cookie (HMAC-SHA256)
+- `proxy.ts` — proteksi route halaman (Next 16: pengganti `middleware.ts`)
+- `app/api/*` — endpoint REST; mutasi (POST/PUT/DELETE) wajib session cookie
+
+Design spec lengkap: [`docs/superpowers/specs/2026-10-06-website-pos-design.md`](docs/superpowers/specs/2026-10-06-website-pos-design.md)
+
+## Catatan
+
+Ini demo lokal, bukan produksi: tanpa rate limit, tanpa HTTPS, secret session
+memakai fallback dev. Jangan dipakai untuk penjualan beneran.

@@ -1,8 +1,15 @@
 process.env.POS_DB = `pos-test-${crypto.randomUUID()}.db`;
 import { GET, POST } from "../app/api/products/route";
 import { PUT, DELETE } from "../app/api/products/[id]/route";
+import { createSession } from "../lib/auth";
+
+const TOKEN = await createSession(1);
 
 const json = (body: unknown) => new Request("http://localhost/api/products", {
+  method: "POST", headers: { "content-type": "application/json", cookie: `session=${TOKEN}` }, body: JSON.stringify(body),
+});
+
+const jsonNoAuth = (body: unknown) => new Request("http://localhost/api/products", {
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 });
 
@@ -27,12 +34,39 @@ test("PUT id tidak ada → 404", async () => {
   expect(await res.json()).toHaveProperty("error");
 });
 test("DELETE id tidak ada → 404", async () => {
-  const res = await DELETE!(new Request("http://localhost/api/products/9999"), { params: { id: "9999" } });
+  const res = await DELETE!(new Request("http://localhost/api/products/9999", { headers: { cookie: `session=${TOKEN}` } }), { params: { id: "9999" } });
   expect(res.status).toBe(404);
 });
 test("DELETE id ada → 204", async () => {
   const created = await POST!(json({ name: "Hapus", category: "lainnya", price: 1, stock: 1 }));
   const { product } = await created.json();
-  const res = await DELETE!(new Request(`http://localhost/api/products/${product.id}`), { params: { id: String(product.id) } });
+  const res = await DELETE!(new Request(`http://localhost/api/products/${product.id}`, { headers: { cookie: `session=${TOKEN}` } }), { params: { id: String(product.id) } });
   expect(res.status).toBe(204);
+});
+test("REVIEW: POST tanpa session → 401 { error }", async () => {
+  const res = await POST!(jsonNoAuth({ name: "X", category: "makanan", price: 1, stock: 1 }));
+  expect(res.status).toBe(401);
+  expect(await res.json()).toHaveProperty("error");
+});
+test("REVIEW: PUT tanpa session → 401", async () => {
+  const res = await PUT!(new Request("http://localhost/api/products/1", {
+    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "X", category: "makanan", price: 1, stock: 1 }),
+  }), { params: { id: "1" } });
+  expect(res.status).toBe(401);
+});
+test("REVIEW: DELETE tanpa session → 401", async () => {
+  const res = await DELETE!(new Request("http://localhost/api/products/1", { method: "DELETE" }), { params: { id: "1" } });
+  expect(res.status).toBe(401);
+});
+test("REVIEW: POST body null → 400 { error }", async () => {
+  const res = await POST!(new Request("http://localhost/api/products", {
+    method: "POST", headers: { "content-type": "application/json", cookie: `session=${TOKEN}` }, body: "null",
+  }));
+  expect(res.status).toBe(400);
+  expect(await res.json()).toHaveProperty("error");
+});
+test("REVIEW: POST emoji non-string → 400 { error }", async () => {
+  const res = await POST!(json({ name: "X", category: "makanan", price: 1, stock: 1, emoji: 123 }));
+  expect(res.status).toBe(400);
+  expect(await res.json()).toHaveProperty("error");
 });

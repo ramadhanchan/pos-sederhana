@@ -1,8 +1,11 @@
 process.env.POS_DB = `pos-test-${crypto.randomUUID()}.db`;
 import { GET, POST } from "../app/api/transactions/route";
+import { createSession } from "../lib/auth";
+
+const TOKEN = await createSession(1);
 
 const checkout = (items: unknown) => new Request("http://localhost/api/transactions", {
-  method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items }),
+  method: "POST", headers: { "content-type": "application/json", cookie: `session=${TOKEN}` }, body: JSON.stringify({ items }),
 });
 
 test("checkout valid → 201 { transaction } dengan total", async () => {
@@ -32,4 +35,18 @@ test("GET ?date= mengembalikan transaksi berhari itu", async () => {
   const res = await GET!(new Request(`http://localhost/api/transactions?date=${today}`));
   expect(res.status).toBe(200);
   expect((await res.json()).transactions.length).toBeGreaterThan(0);
+});
+test("REVIEW: checkout tanpa session → 401 { error }", async () => {
+  const res = await POST!(new Request("http://localhost/api/transactions", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: [{ productId: 1, qty: 1 }] }),
+  }));
+  expect(res.status).toBe(401);
+  expect(await res.json()).toHaveProperty("error");
+});
+test("REVIEW: body null → 400 { error }", async () => {
+  const res = await POST!(new Request("http://localhost/api/transactions", {
+    method: "POST", headers: { "content-type": "application/json", cookie: `session=${TOKEN}` }, body: "null",
+  }));
+  expect(res.status).toBe(400);
+  expect(await res.json()).toHaveProperty("error");
 });

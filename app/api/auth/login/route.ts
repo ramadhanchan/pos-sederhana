@@ -4,11 +4,14 @@ import { getUserByUsername } from "@/lib/queries";
 import { verifyPassword, createSession } from "@/lib/auth";
 
 export async function POST(request: Request): Promise<Response> {
-  let body: { username?: unknown; password?: unknown };
+  let body: { username?: unknown; password?: unknown } | null;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Body harus JSON" }, { status: 400 });
+  }
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Body harus object JSON" }, { status: 400 });
   }
 
   const { username, password } = body;

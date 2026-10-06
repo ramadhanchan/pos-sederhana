@@ -55,6 +55,9 @@ export function validateProductInput(input: ProductInput): void {
   if (!Number.isInteger(input.stock) || input.stock < 0) {
     throw new ValidationError("Stok harus bilangan bulat tidak negatif");
   }
+  if (input.emoji !== undefined && typeof input.emoji !== "string") {
+    throw new ValidationError("Emoji harus berupa teks");
+  }
 }
 
 export function listProducts(

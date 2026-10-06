@@ -60,3 +60,10 @@ export async function verifySession(token: string): Promise<number | null> {
     return null;
   }
 }
+
+export async function getSessionFromRequest(request: Request): Promise<number | null> {
+  const cookie = request.headers.get("cookie") ?? "";
+  const match = cookie.match(/(?:^|;\s*)session=([^;]+)/);
+  if (!match) return null;
+  return verifySession(match[1]);
+}

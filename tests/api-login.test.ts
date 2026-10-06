@@ -19,3 +19,10 @@ test("body kosong → 400", async () => {
   const res = await POST!(req({}));
   expect(res.status).toBe(400);
 });
+test("REVIEW: body null → 400 { error }", async () => {
+  const res = await POST!(new Request("http://localhost/api/auth/login", {
+    method: "POST", headers: { "content-type": "application/json" }, body: "null",
+  }));
+  expect(res.status).toBe(400);
+  expect(await res.json()).toHaveProperty("error");
+});

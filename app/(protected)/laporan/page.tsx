@@ -13,9 +13,11 @@ interface TopProduct {
 
 export default function LaporanPage() {
   const [date, setDate] = useState(() => localDate());
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
 
   const { data, isPending } = useQuery({
     queryKey: ["transactions", date],
+    enabled: validDate,
     queryFn: async () => {
       const res = await fetch(`/api/transactions?date=${date}`);
       if (!res.ok) throw new Error("Gagal memuat laporan");
@@ -58,7 +60,11 @@ export default function LaporanPage() {
         </div>
       </div>
 
-      {isPending ? (
+      {!validDate ? (
+        <div className="text-center py-16 text-slate-500 text-sm bg-white rounded-xl border border-slate-200">
+          Pilih tanggal terlebih dahulu
+        </div>
+      ) : isPending ? (
         <div className="h-40 rounded-xl bg-slate-200 animate-pulse" />
       ) : transactions.length === 0 ? (
         <div className="text-center py-16 text-slate-500 text-sm bg-white rounded-xl border border-slate-200">
