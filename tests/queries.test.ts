@@ -1,6 +1,12 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { initDb } from "../lib/db";
-import { listProducts, createProduct, updateProduct, deleteProduct, getUserByUsername, ValidationError } from "../lib/queries";
+import { listProducts, createProduct, updateProduct, deleteProduct, getUserByUsername, ValidationError, createTransaction, listTransactions, InsufficientStockError } from "../lib/queries";
+
+function localDate(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 let db: Awaited<ReturnType<typeof initDb>>;
 beforeEach(async () => { db = await initDb(":memory:"); });
@@ -42,4 +48,37 @@ test("deleteProduct id tidak ada mengembalikan false", async () => {
 test("getUserByUsername password salah tetap return user + hash", async () => {
   const u = await getUserByUsername(db, "admin");
   expect(u?.passwordHash).toStartWith("$2"); // bcrypt prefix
+});
+test("checkout mengurangi stok dan mencatat snapshot", async () => {
+  const before = (await listProducts(db))[0];
+  const trx = await createTransaction(db, [{ productId: before.id, qty: 2 }]);
+  expect((await listProducts(db)).find(p => p.id === before.id)!.stock).toBe(before.stock - 2);
+  expect(trx.items[0].name).toBe(before.name);
+});
+test("REVIEW-FOCUS: stok kurang → lempar, stok tidak berubah", async () => {
+  const before = (await listProducts(db))[0];
+  try { await createTransaction(db, [{ productId: before.id, qty: before.stock + 1 }]); } catch (e) {}
+  expect((await listProducts(db)).find(p => p.id === before.id)!.stock).toBe(before.stock);
+});
+test("REVIEW-FOCUS: unit terakhir dibeli 2x → yang kedua gagal, stok 0 (tidak negatif)", async () => {
+  const p = (await listProducts(db))[0];
+  await updateProduct(db, p.id, { ...p, stock: 1 });
+  await createTransaction(db, [{ productId: p.id, qty: 1 }]);
+  let failed = false;
+  try { await createTransaction(db, [{ productId: p.id, qty: 1 }]); } catch (e) { failed = e instanceof InsufficientStockError; }
+  expect(failed).toBe(true);
+  expect((await listProducts(db)).find(x => x.id === p.id)!.stock).toBe(0);
+});
+test("REVIEW-FOCUS: produk dihapus setelah penjualan → riwayat tetap ada namanya", async () => {
+  const p = (await listProducts(db))[0];
+  const trx = await createTransaction(db, [{ productId: p.id, qty: 1 }]);
+  await deleteProduct(db, p.id);
+  const list = await listTransactions(db);
+  expect(list.find(t => t.id === trx.id)!.items[0].name).toBe(p.name);
+});
+test("listTransactions filter date", async () => {
+  const today = localDate();
+  await createTransaction(db, [{ productId: (await listProducts(db))[0].id, qty: 1 }]);
+  expect((await listTransactions(db, today)).length).toBeGreaterThan(0);
+  expect((await listTransactions(db, "1999-01-01")).length).toBe(0);
 });

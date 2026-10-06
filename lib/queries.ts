@@ -1,10 +1,24 @@
 import type { Database } from "bun:sqlite";
-import { CATEGORIES, type Category, type Product, type ProductInput, type User } from "./types";
+import { CATEGORIES, type Category, type Product, type ProductInput, type Transaction, type TransactionItem, type User } from "./types";
 
 export class ValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ValidationError";
+  }
+}
+
+export class ProductNotFoundError extends Error {
+  constructor(productId: number) {
+    super(`Produk dengan id ${productId} tidak ditemukan`);
+    this.name = "ProductNotFoundError";
+  }
+}
+
+export class InsufficientStockError extends Error {
+  constructor(name: string) {
+    super(`Stok "${name}" tidak cukup`);
+    this.name = "InsufficientStockError";
   }
 }
 
@@ -100,4 +114,90 @@ export function getUserByUsername(db: Database, username: string): User | null {
     .query("SELECT id, username, password_hash AS passwordHash FROM users WHERE username = ?")
     .get(username) as { id: number; username: string; passwordHash: string } | null;
   return row ?? null;
+}
+
+function localNow(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+export interface NewTransactionItem {
+  productId: number;
+  qty: number;
+}
+
+export function createTransaction(db: Database, items: NewTransactionItem[]): Transaction {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new ValidationError("Transaksi harus punya minimal satu item");
+  }
+  for (const item of items) {
+    if (!Number.isInteger(item.productId) || item.productId <= 0) {
+      throw new ValidationError("productId harus bilangan bulat positif");
+    }
+    if (!Number.isInteger(item.qty) || item.qty <= 0) {
+      throw new ValidationError("qty harus bilangan bulat positif");
+    }
+  }
+
+  const run = db.transaction((): Transaction => {
+    let total = 0;
+    const snapshots: { productId: number; name: string; price: number; qty: number }[] = [];
+
+    for (const item of items) {
+      const info = db
+        .query("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?")
+        .run(item.qty, item.productId, item.qty);
+      if (info.changes === 0) {
+        const exists = db.query("SELECT name, stock FROM products WHERE id = ?").get(item.productId) as
+          | { name: string; stock: number }
+          | null;
+        if (!exists) throw new ProductNotFoundError(item.productId);
+        throw new InsufficientStockError(exists.name);
+      }
+      const row = db.query("SELECT name, price FROM products WHERE id = ?").get(item.productId) as {
+        name: string;
+        price: number;
+      };
+      total += row.price * item.qty;
+      snapshots.push({ productId: item.productId, name: row.name, price: row.price, qty: item.qty });
+    }
+
+    const now = localNow();
+    const trxInfo = db.query("INSERT INTO transactions (total, created_at) VALUES (?, ?)").run(total, now);
+    const trxId = Number(trxInfo.lastInsertRowid);
+
+    const insertItem = db.query(
+      "INSERT INTO transaction_items (transaction_id, product_id, name, price, qty) VALUES (?, ?, ?, ?, ?)"
+    );
+    const createdItems: TransactionItem[] = snapshots.map((s) => {
+      const info = insertItem.run(trxId, s.productId, s.name, s.price, s.qty);
+      return { id: Number(info.lastInsertRowid), productId: s.productId, name: s.name, price: s.price, qty: s.qty };
+    });
+
+    return { id: trxId, total, createdAt: now, items: createdItems };
+  });
+
+  return run();
+}
+
+export function listTransactions(db: Database, date?: string): Transaction[] {
+  let sql = "SELECT id, total, created_at AS createdAt FROM transactions";
+  const params: string[] = [];
+  if (date) {
+    sql += " WHERE created_at LIKE ?";
+    params.push(`${date}%`);
+  }
+  sql += " ORDER BY id DESC";
+  const rows = db.query(sql).all(...params) as { id: number; total: number; createdAt: string }[];
+
+  const selectItems = db.query(
+    "SELECT id, product_id AS productId, name, price, qty FROM transaction_items WHERE transaction_id = ? ORDER BY id"
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    total: row.total,
+    createdAt: row.createdAt,
+    items: selectItems.all(row.id) as TransactionItem[],
+  }));
 }
