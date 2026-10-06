@@ -42,6 +42,9 @@ next-env.d.ts
 
 # database
 pos.db
+pos.db-shm
+pos.db-wal
+pos-test-*.db*
 *.db
 !.superpowers/**
 
