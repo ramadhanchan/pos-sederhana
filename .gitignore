@@ -50,3 +50,6 @@ pos-test-*.db*
 
 # env
 .env*.local
+
+# local agent tooling (jangan di-publish)
+.commandcode/
